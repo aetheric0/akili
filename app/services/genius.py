@@ -8,7 +8,7 @@ Encapsulates API calls and error handling logic.
 import json
 import requests
 from typing import Optional
-from app.config import settings
+from config import settings
 
 
 def generate_content(prompt_text: str, model: str = "gemini-1.5-flash-latest") -> str:

@@ -8,7 +8,10 @@ class Settings(BaseSettings):
     """
     Global Base settings for Akili API
     """
-    # Maximum file size for uploads in bytes (e.g., 5MB)
+    APP_ENV: str = "development"
+    APP_PORT: int = 8000
+    
+    # Max upload size
     GOOGLE_GEMINI_API_KEY: str
     MAX_FILE_SIZE: int = 5 * 1024 * 1024        #5 MB
 

@@ -11,12 +11,13 @@ local development or deployed via ASGI servers in production.
 from fastapi import FastAPI
 from app.routers.health import router as health_router
 from app.routers.parser import router as parser_router
+from app.routers.upload import router as upload_router
 from app.routers.payment import router as payment_router
 from app.routers.demo import router as demo_router
 
 
 app = FastAPI(
-    title="Jobfluence",
+    title="Akili",
     description=(
         "AI-powered study companion that generates summaries, quizzes,"
         " custom prompts, study guides, and personalized recommendations"
@@ -28,6 +29,7 @@ app = FastAPI(
 # Router Registration
 app.include_router(health_router)
 app.include_router(parser_router)
+app.include_router(upload_router)
 app.include_router(payment_router)
 app.include_router(demo_router)
 
@@ -44,7 +46,7 @@ def home() -> dict[str, str]:
     return {
         "message": (
             "Hello, World! "
-            "Akili The AI Study Pack server is live with FastAPI"
+            "Akili The AI Study Pack server is live with FastAPI."
         )
     }
 
