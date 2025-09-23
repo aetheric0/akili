@@ -10,3 +10,12 @@ tika
 
 # HTTP Client
 requests
+
+# Code Quality & Style
+ruff
+
+# Testing Framework
+pytest
+
+# Configuration Management
+pydantic-settings

@@ -1,0 +1,32 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: akili_api
+    ports:
+      - "8000:8000"
+    # Mount project directory for live edits during development
+    volumes:
+      - ./:/app:delegated
+    # Use env file (create from .env.example)
+    env_file:
+      - .env
+
+    # Run as root in dev so mounted files inherit host permissions and reloader works.
+    # In production remove this and rely on the non-root USER in the image.
+    user: root
+    # Use uvicorn --reload for development
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    restart: unless-stopped
+    # Simple healthcheck (requires curl in the image)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+        

@@ -1,2 +1,33 @@
-.venv/*
-.env*
+# Virtual Environments
+.venv/
+
+# Environment Variables
+.env
+.env.local
+.env.development
+.env.production
+
+# !!! WARNING: ALLOWS THIS FILE TO BE COMMITTED TO GITHUB
+!.env.example
+
+# Python Caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Databases
+*.db
+*.sqlite3
+
+# Tests
+tests/
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+
+# Packaging / Build
+build/
+dist/
+*.egg-info/

@@ -1,0 +1,28 @@
+# Python envs
+.venv/
+env/
+ENV/
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git
+.gitignore
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local files
+.env
+.env.*
+tests/

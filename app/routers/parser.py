@@ -1,12 +1,13 @@
 """
 Parser Endpoint Module.
 
-This module defines the `/parser` endpoint for handling text extraction.
-It is currently a stub and will later integrate AI/ML models to process
-user input and return structured results.
+Provides routes for extracting text from uploaded PDF and Word documents.
+Delegates parsing logic to the parser module (pdfminer + Tika).
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile, HTTPException
+from app.models.parser import parse_document
+import os
 
 
 # Initialize router with prefix and tag
@@ -15,12 +16,26 @@ router = APIRouter(
     tags=['parser']
 )
 
-@router.post("/extract", summary="Extract Text", response_description="Parsed text output")
-async def extract_text() -> dict[str, str]:
+@router.post(
+    "/extract",
+    summary="Extract text from a document",
+    response_description="The extracted text content from the uploaded file."
+)
+async def extract_text(file: UploadFile = File(...)) -> dict[str, str]:
     """
     Extract text from a given input.
 
     **Current Behavior:**
     - NOT IMPLEMENTED YET. Returns a static placeholder message.
     """
-    return {"message": "Text extraction not yet implemented"}
+    file_bytes = await file.read()
+    if len(file_bytes) > settings.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail="File too larrge. Maximum allowed size is 5MB."
+        )
+    try:
+        text = parse_document(file_bytes, file.filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"extracted_text": text}
