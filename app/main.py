@@ -8,8 +8,11 @@ and provides a root endpoint. It can be run directly with Uvicorn for
 local development or deployed via ASGI servers in production.
 """
 
+# FASTAPI imports
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# APP Router imports
 from app.routers.health import router as health_router
 from app.routers.parser import router as parser_router
 from app.routers.upload import router as upload_router

@@ -11,8 +11,11 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     APP_PORT: int = 8000
     
-    # Max upload size
+    # Configuration for external services
     GOOGLE_GEMINI_API_KEY: str
+    REDIS_HOST: str ="redis://localhost:6379/0"
+
+    # Max upload size
     MAX_FILE_SIZE: int = 5 * 1024 * 1024        #5 MB
 
     class Config:
