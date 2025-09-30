@@ -9,12 +9,13 @@ local development or deployed via ASGI servers in production.
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.routers.health import router as health_router
 from app.routers.parser import router as parser_router
 from app.routers.upload import router as upload_router
 from app.routers.payment import router as payment_router
 from app.routers.demo import router as demo_router
-
+from app.routers.chat import router as chat_router
 
 app = FastAPI(
     title="Akili",
@@ -26,12 +27,21 @@ app = FastAPI(
     version="1.0"
 )
 
+# CORS Middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Router Registration
 app.include_router(health_router)
 app.include_router(parser_router)
 app.include_router(upload_router)
 app.include_router(payment_router)
-app.include_router(demo_router)
+app.include_router(chat_router)
 
 
 @app.get("/")

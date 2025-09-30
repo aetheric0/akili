@@ -23,3 +23,9 @@ pydantic-settings
 
 # Other
 python-multipart
+
+# genAI Client
+google-genai
+
+# DATABASE(S)
+redis

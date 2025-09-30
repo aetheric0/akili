@@ -1,5 +1,5 @@
 """
-Global Configuration for Project 'JobFluence'
+Global Configuration for Project 'Akili'
 """
 
 from pydantic_settings import BaseSettings

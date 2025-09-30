@@ -13,11 +13,12 @@ Security Note:
 
 import io
 import logging
+import unicodedata
 from pdfminer.high_level import extract_text_to_fp
 from pdfminer.layout import LAParams
 from pdfminer.pdfparser import PDFSyntaxError
 from tika import parser as tika_parser
-import unicodedata
+from config import settings
 
 # Configure basic logging for the module.
 logger = logging.getLogger(__name__)

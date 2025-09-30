@@ -7,6 +7,7 @@ Delegates parsing logic to the parser module (pdfminer + Tika).
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from app.models.parser import parse_document
+from config import settings
 import os
 
 
@@ -35,7 +36,9 @@ async def extract_text(file: UploadFile = File(...)) -> dict[str, str]:
             detail="File too larrge. Maximum allowed size is 5MB."
         )
     try:
-        text = parse_document(file_bytes, file.filename)
+        extracted_text = parse_document(file_bytes, file.filename)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"extracted_text": text}
+    response = {"extracted_text": extracted_text}
+
+    return response
