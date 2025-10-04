@@ -21,7 +21,7 @@ from config import settings
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 @router.post(
-    "/",
+    "/document",
     summary="Upload a document and generate a chat session",
     response_description="Summary, Quiz, and a chat session ID"
 )
