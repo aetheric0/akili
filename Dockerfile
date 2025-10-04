@@ -38,4 +38,4 @@ EXPOSE 8000
 USER app
 
 # Default command: production-ready (no --reload)
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "main:app", "--bind", "0.0.0.0:${PORT:-8000}", "--workers", "4"]
+CMD sh -c "gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-8000} --workers 4"
