@@ -3,6 +3,7 @@
 # Web Framework
 fastapi
 uvicorn[standard]
+gunicorn
 
 # Parsing Libraries
 pdfminer.six
