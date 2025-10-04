@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     """
     APP_ENV: str = "development"
     APP_PORT: int = 8000
+    REDIS_HOST: str
     
     # Configuration for external services
     GOOGLE_GEMINI_API_KEY: str
