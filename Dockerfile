@@ -14,6 +14,10 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends curl \
 	&& rm -rf /var/lib/apt/lists/*
 
+
+RUN mkdir -p /tmp && chmod 777 /tmp
+
+
 # Copy only requirements first to leverage Docker layer cache
 COPY requirements.txt /app/requirements.txt
 
