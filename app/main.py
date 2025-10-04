@@ -8,6 +8,9 @@ and provides a root endpoint. It can be run directly with Uvicorn for
 local development or deployed via ASGI servers in production.
 """
 
+# Config imports
+from config import settings
+
 # FASTAPI imports
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,7 +36,7 @@ app = FastAPI(
 # CORS Middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[settings.UI_HOST],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
