@@ -90,6 +90,47 @@ class CacheService:
                 "Redis operational error while setting key {}: {}".format(key,e)
             )
 
+    def hset(self, key: str, mapping: dict):
+        """
+        Sets fiels in a Redis Hash.
+        """
+        try:
+            # The client's hset handles serialization of the mapping dict
+            return self.client.hset(key, mapping=mapping)
+        except redis.exceptions.RedisError as e:
+            print(f"Redis error during HSET on key {key}: {e}")
+            return None
+
+    def sadd(self, key: str, value: str):
+        """
+        Adds a value to a Redis Set.
+        """
+        try:
+            return self.client.sadd(key, value)
+        except redis.exceptions.RedisError as e:
+            print(f"Redis error during SADD on key {key}: {e}")
+            return None
+
+    def smembers(self, key: str) -> set:
+        """
+        Returns all members of a Redis Set.
+        """
+        try:
+            return self.client.smembers(key)
+        except redis.exceptions.RedisError as e:
+            print(f"Redis error during SMEMBERS on key {key}: {e}")
+            return set()
+
+    def hgetall(self, key: str) -> dict:
+        """
+        Returns all fields and values of a Redis Hash.
+        """
+        try:
+            return self.client.hgetall(key)
+        except rredis.exceptions.RedisError as e:
+            print(f"Redis eror during HGETALL on key {key}: {e}")
+            return {}
+
     def delete(self, key: str) -> int:
         """
         Deletes a key from Redis.
