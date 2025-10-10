@@ -7,7 +7,9 @@ integrate with a payment provider (e.g., Stripe, Paypal, Mobile Money,
  or PayStack)
 """
 
+from datetime import datetime
 from fastapi import APIRouter
+from app.services.db import cache_service
 
 # Initialize router with prefix and tag
 router = APIRouter(
@@ -16,15 +18,22 @@ router = APIRouter(
 )
 
 @router.post(
-    "/charge",
-    summary="Charge User",
-    response_description="Payment processing response"
+    "/confirm",
+    summary="Confirm Payment",
+    response_description="Payment confirmation response"
 )
-async def charge_user() -> dict[str, str]:
-    """
-    Charge a user for a service or product.
-
-    ** Current Behavior:**
-    NOT DEFINED YET. PLACEHOLDER RESPONSE USED INSTEAD
-    """
-    return {"message": "Payment processing not yet implemented"}
+async def confirm_payment(guest_token: str, tier: str = "basic") -> dict[str, str]:
+    try:
+        
+        """
+        Confirm Payment Status of user
+        """
+        # Store token payment status
+        cache_service.hset(f"token:{guest_token}", {
+            "tier": tier,
+            "paid": "true",
+            "activated_at": datetime.utcnow().isoformat()
+        })
+        return {"status": "success", "message": f"Token {guest_token} upgraded to {tier} plan"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Payment confirmation failed: {e}")

@@ -3,6 +3,14 @@ Global Configuration for Project 'Akili'
 """
 
 from pydantic_settings import BaseSettings
+from datetime import timedelta
+
+SUBSCRIPTION_PLANS = {
+    "basic_weekly": timedelta(days=7),
+    "standard_monthly": timedelta(days=30),
+    "premium-quarterly": timedelta(days=30),
+    "lifetime": None    # No enquiry
+}
 
 class Settings(BaseSettings):
     """

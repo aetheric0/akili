@@ -160,7 +160,27 @@ class GeniusService:
                 )
             )
 
-            return response.text
+            try:
+                if hasattr(response, "text") and isinstance(response.text, str):
+                    clean_text = response.text
+                elif hasattr(response, "candidates"):
+                    # Gemini often returns structured responses
+                    parts = []
+                    for candidate in response.candidates or []:
+                        content = getattr(candidate, "content", None)
+                        if content and hasattr(content, "parts"):
+                            for part in content.parts:
+                                text_part = getattr(part, "text", "")
+                                if text_part:
+                                    parts.append(text_part)
+                    clean_text = "\n\n".join(parts)
+                else:
+                    clean_text = str(response)
+            except Exception as e:
+                print(f"[WARN] Failed to normalize Gemini response: {e}")
+                clean_text = str(response)
+
+            return clean_text
 
         except APIError as e:
             print("Gemini API Error: {}".format(e))
