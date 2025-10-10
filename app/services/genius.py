@@ -161,30 +161,48 @@ class GeniusService:
             )
 
             try:
+                # --- Case 1: Direct .text field ---
                 if hasattr(response, "text") and isinstance(response.text, str):
-                    clean_text = response.text
+                        clean_text = response.text
+                
+                # --- Case 2: Structured Gemini candidates ---
                 elif hasattr(response, "candidates"):
-                    # Gemini often returns structured responses
                     parts = []
-                    for candidate in response.candidates or []:
+                    for candidate in getattr(response, "candidates", []) or []:
                         content = getattr(candidate, "content", None)
                         if content and hasattr(content, "parts"):
                             for part in content.parts:
-                                text_part = getattr(part, "text", "")
-                                if text_part:
+                                text_part = getattr(part, "text", None)
+                                if isinstance(text_part, str):
                                     parts.append(text_part)
-                    clean_text = "\n\n".join(parts)
+                                elif isinstance(text_part, (dict, list)):
+                                    # Convert structured data to readable JSON for inspection
+                                    parts.append(json.dumps(text_part, indent=2))
+                                elif isinstance(part, dict):
+                                    # handle dict directly if SDK version changed
+                                    parts.append(json.dumps(part, indent=2))
+                                else:
+                                    # skip None/empty parts
+                                    continue
+                    clean_text = "\n\n".join(parts).strip()
+                
                 else:
+                    # Fallback
                     clean_text = str(response)
+                
+                # Extra: remove leftover placeholders like [object Object]
+                clean_text = clean_text.replace("[object Object]", "").strip()
+                
             except Exception as e:
                 print(f"[WARN] Failed to normalize Gemini response: {e}")
                 clean_text = str(response)
 
             return clean_text
 
-        except APIError as e:
-            print("Gemini API Error: {}".format(e))
-            return "Oops Akili encountered an error. Refresh and try again."
+        except Exception as e:
+                    # Global error handler for the whole function
+                    print(f"[ERROR] Gemini API call failed: {e}")
+                    return f"Error: {e}"
 
 genius_service = GeniusService()
 
