@@ -1,6 +1,6 @@
 from datetime import datetime
-from app.config.plans import SUBSCRIPTION_PLANS
-from app.services import cache_service
+from config import SUBSCRIPTION_PLANS
+from app.services.db import cache_service
 
 def activate_subscription(guest_token: str, plan_name: str):
     """
@@ -17,7 +17,7 @@ def activate_subscription(guest_token: str, plan_name: str):
 
     cache_service.hset(
         user_key, mapping={
-            "is_paid": "true"
+            "is_paid": "true",
             "plan_name": plan_name,
             "expiry_date": expiry_date or "none"
         }

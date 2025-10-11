@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     APP_PORT: int = 8000
     REDIS_HOST: str
     UI_HOST: str
+    PAYSTACK_SECRET_KEY: str
     
     # Configuration for external services
     GOOGLE_GEMINI_API_KEY: str
