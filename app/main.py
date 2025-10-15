@@ -20,10 +20,12 @@ from app.routers.health import router as health_router
 from app.routers.parser import router as parser_router
 from app.routers.upload import router as upload_router
 from app.routers.payment import router as payment_router
+from app.routers.auth import router as auth_router
 from app.routers.demo import router as demo_router
 from app.routers.chat import router as chat_router
 from app.routers.sessions import router as sessions_router
 from app.routers.study import router as study_router
+
 
 app = FastAPI(
     title="Akili",
@@ -49,6 +51,7 @@ app.include_router(health_router)
 app.include_router(parser_router)
 app.include_router(upload_router)
 app.include_router(payment_router)
+app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(sessions_router)
 app.include_router(study_router)

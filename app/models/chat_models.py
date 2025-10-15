@@ -1,4 +1,11 @@
 from pydantic import BaseModel
+from typing import Literal, Union
+
+
+class ChatMessage(BaseModel):
+    role: Literal['user', 'model']
+    # The AI can return a string or a structured JSON object (for quizzes, etc.)
+    text: Union[str, dict]
 
 
 class UploadResponse(BaseModel):

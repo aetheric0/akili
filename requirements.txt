@@ -5,6 +5,10 @@ fastapi
 uvicorn[standard]
 gunicorn
 
+# User Auth
+supabase
+gotrue
+
 # Parsing Libraries
 pdfminer.six
 tika
@@ -30,3 +34,6 @@ google-genai
 
 # DATABASE(S)
 redis
+
+# ... other packages ...
+PyYAML>=6.0

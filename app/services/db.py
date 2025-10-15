@@ -183,13 +183,13 @@ class CacheService:
             return False
 
     # ---------- Session & User helpers ----------
-    def add_session_for_user(self, guest_token: str, session_id: str, session_data: Optional[Dict[str, Any]] = None, tier: str = "free") -> bool:
+    def add_session_for_user(self, user_id: str, session_id: str, session_data: Optional[Dict[str, Any]] = None, tier: str = "free") -> bool:
         """
         Add session id to user's session set and (optionally) store session_data.
         session_data will be stored at key 'session:{session_id}' and policy applied.
         """
         session_key = f"session:{session_id}"
-        user_sessions_key = f"user:{guest_token}:sessions"
+        user_sessions_key = f"user:{user_id}:sessions"
 
         if session_data is not None:
             ok = self.set_with_policy(session_key, session_data, tier=tier)
@@ -198,44 +198,44 @@ class CacheService:
         self.sadd(user_sessions_key, session_id)
         return True
 
-    def remove_session_for_user(self, guest_token: str, session_id: str) -> bool:
+    def remove_session_for_user(self, user_id: str, session_id: str) -> bool:
         """Remove session id from user's set and delete session key."""
         session_key = f"session:{session_id}"
-        user_sessions_key = f"user:{guest_token}:sessions"
+        user_sessions_key = f"user:{user_id}:sessions"
         self.srem(user_sessions_key, session_id)
         self.delete(session_key)
         return True
 
-    def count_user_sessions(self, guest_token: str) -> int:
+    def count_user_sessions(self, user_id: str) -> int:
         """Return number of active sessions tracked for a user."""
-        return self.scard(f"user:{guest_token}:sessions")
+        return self.scard(f"user:{user_id}:sessions")
 
-    def list_user_sessions(self, guest_token: str) -> List[str]:
+    def list_user_sessions(self, user_id: str) -> List[str]:
         """Return list of session IDs for a user."""
-        return list(self.smembers(f"user:{guest_token}:sessions"))
+        return list(self.smembers(f"user:{user_id}:sessions"))
 
     # ---------- Subscription helpers ----------
-    def set_user_subscription(self, guest_token: str, tier: str = "paid", expiry_date: Optional[datetime] = None) -> bool:
+    def set_user_subscription(self, user_id: str, tier: str = "paid", expiry_date: Optional[datetime] = None) -> bool:
         """
         Save subscription data under token:{guest_token}.
         expiry_date: datetime or None (if None and tier=='paid', you can choose to set a long expiry)
         """
-        key = f"token:{guest_token}"
+        key = f"user:{user_id}"
         payload: Dict[str, str] = {"tier": tier}
         if expiry_date:
             payload["expiry_date"] = expiry_date.isoformat()
         payload["paid"] = "true" if tier == "paid" else "false"
         return self.hset(key, payload)
 
-    def get_user_subscription(self, guest_token: str) -> Dict[str, str]:
-        return self.hgetall(f"token:{guest_token}")
+    def get_user_subscription(self, user_id: str) -> Dict[str, str]:
+        return self.hgetall(f"user:{user_id}")
 
-    def is_subscription_active(self, guest_token: str) -> bool:
+    def is_subscription_active(self, user_id: str) -> bool:
         """
         Returns True if the user has tier == 'paid' and expiry_date is in the future (or not provided).
         The application layer can implement grace periods; we keep this simple here.
         """
-        data = self.get_user_subscription(guest_token)
+        data = self.get_user_subscription(user_id)
         if not data:
             return False
         tier = data.get("tier")
@@ -251,16 +251,23 @@ class CacheService:
             return False
         return datetime.utcnow() <= expiry_dt
 
+    def set_user_profile(self, user_id: str, profile_data: Dict[str, Any]) -> bool:
+        return self.hset(f"user_stats:{user_id}", profile_data)
+
+    def get_user_profile(self, user_id: str) -> Dict[str, str]:
+        return self.hgetall(f"user_stats:{user_id}")
+
+
     # ---------- Bulk helpers ----------
-    def persist_user_sessions(self, guest_token: str) -> None:
+    def persist_user_sessions(self, user_id: str) -> None:
         """Remove TTL for all sessions of a user (make them permanent)."""
-        sessions = self.smembers(f"user:{guest_token}:sessions")
+        sessions = self.smembers(f"user:{user_id}:sessions")
         for s in sessions:
             self.persist(f"session:{s}")
 
-    def expire_user_sessions(self, guest_token: str, ttl_seconds: int) -> None:
+    def expire_user_sessions(self, user_id: str, ttl_seconds: int) -> None:
         """Apply TTL to all sessions of a user (useful to enforce expiry policy)."""
-        sessions = self.smembers(f"user:{guest_token}:sessions")
+        sessions = self.smembers(f"user:{user_id}:sessions")
         for s in sessions:
             self.expire(f"session:{s}", ttl_seconds)
 

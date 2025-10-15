@@ -16,11 +16,20 @@ class Settings(BaseSettings):
     """
     Global Base settings for Akili API
     """
+    # App Configuration
     APP_ENV: str = "development"
     APP_PORT: int = 8000
     REDIS_HOST: str
+
+    # Client Host
     UI_HOST: str
+
+    # Payment Provider
     PAYSTACK_SECRET_KEY: str
+
+    # SUPABASE
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
     
     # Configuration for external services
     GOOGLE_GEMINI_API_KEY: str

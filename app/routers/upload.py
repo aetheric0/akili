@@ -45,7 +45,7 @@ async def upload_document_and_start_chat(
     """
 
     # ✅ 0. User Context
-    token = user["token"]
+    user_id = user["user_id"]
     user_tier = user["tier"]
     is_active = user["is_active"]
     plan_name = user["plan_name"]
@@ -70,9 +70,9 @@ async def upload_document_and_start_chat(
         )
 
     # ✅ 2. Enforce active session limit (for free & expired users)
-    session_set_key = f"user:{token}:sessions"
+    session_set_key = f"user:{user_id}:sessions"
     session_ids = cache_service.smembers(session_set_key)
-    active_session_count = len(session_ids or [])
+    active_session_count = len(cache_service.list_user_sessions(user_id))
 
     MAX_FREE_SESSIONS = 5
     if not is_paid and active_session_count >= MAX_FREE_SESSIONS:
@@ -99,29 +99,28 @@ async def upload_document_and_start_chat(
     )
 
     # ✅ 5. Store session metadata
-    session_key = f"session:{session_id}"
-    cache_service.hset(
-        session_key,
-        mapping={
-            "document_name": file.filename,
-            "created_at": datetime.utcnow().isoformat(),
-            "history": json.dumps(
-                [{"role": "model", "text": initial_ai_response}]
-            ),
-            "owner": token,
-            "tier": user_tier,
-            "plan_name": plan_name,
-            "expiry_date": expiry_date,
-        },
-    )
+    session_data = {
+        "document_name": file.filename,
+        "created_at": datetime.utcnow().isoformat(),
+        "history": json.dumps(
+            [{"role": "model", "text": initial_ai_response}]
+        ),
+        "owner": user_id,
+        "tier": user_tier,
+        "plan_name": plan_name,
+        "expiry_date": expiry_date,
+    }
 
+    cache_service.add_session_for_user(user_id, session_id, session_data, tier=user["tier"])
+    # print(f"{session_data[history][0][text]}")
+    # print(user_id)
     # ✅ 6. Apply storage policy based on user tier
     if is_paid:
-        cache_service.persist(session_key)  # persistent for active paid users
-        print(f"[Redis:policy] Persistent session for paid user {token}")
+        cache_service.persist(session_id)  # persistent for active paid users
+        print(f"[Redis:policy] Persistent session for paid user {user_id}")
     else:
-        cache_service.expire(session_key, int(timedelta(days=7).total_seconds()))
-        print(f"[Redis:policy] TTL(7 days) applied for free/expired user {token}")
+        cache_service.expire(session_id, int(timedelta(days=7).total_seconds()))
+        print(f"[Redis:policy] TTL(7 days) applied for free/expired user {user_id}")
 
     # ✅ 7. Track session under user's active sessions
     cache_service.sadd(session_set_key, session_id)

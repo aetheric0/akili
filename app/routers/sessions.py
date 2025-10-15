@@ -6,10 +6,11 @@ Handles retrieval of user chat sessions.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
+import json
 
 from app.security import get_current_user
 from app.services.db import cache_service
-from app.models.session_model import SessionInfo
+from app.models.session_model import SessionInfo, SessionDetail
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -24,7 +25,7 @@ async def get_user_sessions(user: dict = Depends(get_current_user)):
     Retrieves a list of all chat sessions associated with the user's token.
     """
 
-    token = user["token"]
+    user_id = user["user_id"]
     tier = user["tier"]
     is_locked = user.get("is_locked", False)
 
@@ -36,16 +37,15 @@ async def get_user_sessions(user: dict = Depends(get_current_user)):
         )
 
     try:
-        session_ids = cache_service.smembers(f"user:{token}:sessions")
+        session_ids = cache_service.list_user_sessions(user_id)
 
         if not session_ids:
             return []
 
         sessions_list = []
-
         # Fetch each session info
         for session_id in session_ids:
-            session_data = cache_service.hgetall(f"session:{session_id}")
+            session_data = cache_service.get(f"session:{session_id}")
             if session_data:
                 sessions_list.append(
                     SessionInfo(
@@ -60,8 +60,46 @@ async def get_user_sessions(user: dict = Depends(get_current_user)):
         return sessions_list
 
     except Exception as e:
-        print(f"[ERROR] Fetching sessions for user {token}: {e}")
+        print(f"[ERROR] Fetching sessions for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Could not retrieve user sessions.")
+
+@router.get(
+    "/{session_id}",
+    summary="Get full details for a single session",
+    response_model=SessionDetail,
+)
+async def get_session_details(session_id: str, user: dict = Depends(get_current_user)):
+    """
+    Retrieves the full data for a specific session, including its chat history.
+    """
+    user_id = user["user_id"]
+
+    # Security check: Ensure the user owns this session
+    if session_id not in cache_service.list_user_sessions(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this session."
+        )
+
+    try:
+        # THE FIX: Use .get() to retrieve the session as a JSON string, which is correct for your setup.
+        session_data = cache_service.get(f"session:{session_id}")
+        if not session_data:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        
+        # The history is stored as a JSON string within the retrieved data, so we parse it.
+        history_list = json.loads(session_data.get("history", "[]"))
+        
+        return SessionDetail(
+            id=session_id,
+            document_name=session_data.get("document_name", "Untitled"),
+            created_at=session_data.get("created_at", ""),
+            history=history_list,
+        )
+    except Exception as e:
+        print(f"[ERROR] Fetching details for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Could not retrieve session details.")
+
 
 @router.delete(
     "/{session_id}",
@@ -72,8 +110,8 @@ async def delete_user_session(session_id: str, user: dict = Depends(get_current_
     """
     Deletes a specific chat session for the authenticated user.
     """
-    token = user["token"]
-    user_sessions_key = f"user:{token}:sessions"
+    user_id = user["user_id"]
+    user_sessions_key = f"user:{user_id}:sessions"
 
     # 1. Secuity Check: Verify the user actually owns this session
     if not cache_service.client.sismember(user_sessions_key, session_id):
@@ -83,7 +121,7 @@ async def delete_user_session(session_id: str, user: dict = Depends(get_current_
         )
         try:
             success = cache_service.remove_session_for_user(
-                guest_token=token,
+                user_id=user_id,
                 session_id=session_id
             )
             if not success:
@@ -92,7 +130,7 @@ async def delete_user_session(session_id: str, user: dict = Depends(get_current_
                     detail="Failed to delete session"
                 )
         except Exception as e:
-            print(f"[ERROR] Deleting session {session_id} for user {token}: {e}")
+            print(f"[ERROR] Deleting session {session_id} for user {user_id}: {e}")
             raise HTTPException(status_code=500, detail="An error occured during session deletion.")
 
         # A 204 response does not have a body, so we return None
