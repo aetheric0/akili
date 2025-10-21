@@ -4,6 +4,7 @@ from typing import List
 
 class SessionInfo(BaseModel):
     id: str
+    mode: str
     document_name: str
     created_at: str
 

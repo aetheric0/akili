@@ -10,12 +10,12 @@ router = APIRouter(prefix="/study", tags=["study"])
 @router.post("/start")
 async def start_study_session(
     data: StudySessionRequest,
-    current_user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user)
 ):
     """
     Start a study session: mark start time in Redis and lock XP gain tracking.
     """
-    guest_token = current_user["token"]
+    user_id = user["user_id"]
     session_id = data.session_id
 
     # Check if session exists
@@ -25,7 +25,7 @@ async def start_study_session(
 
     # Store start timestamp
     cache_service.hset(session_key, mapping={"study_start": datetime.utcnow().isoformat()})
-    cache_service.hset(f"user:{guest_token}:study", mapping={"active_session": session_id})
+    cache_service.hset(f"user:{user_id}:study", mapping={"active_session": session_id})
 
     return {"message": f"Study session {session_id} started."}
 
@@ -38,11 +38,11 @@ async def end_study_session(
     """
     End a study session: calculate XP based on duration, update user's XP & coins.
     """
-    guest_token = current_user["token"]
+    user_id = user["user_id"]
     session_id = data.session_id
 
     session_key = f"session:{session_id}"
-    study_key = f"user:{guest_token}:study"
+    study_key = f"user:{user_id}:study"
 
     session_data = cache_service.hgetall(session_key)
     if not session_data or "study_start" not in session_data:
@@ -58,7 +58,7 @@ async def end_study_session(
         gained_xp = 1  # Minimum XP gain
 
     # Update user stats
-    user_key = f"token:{guest_token}"
+    user_key = f"user:{user_id}"
     current_xp = int(cache_service.hget(user_key, "xp") or 0)
     new_xp = current_xp + gained_xp
     cache_service.hset(user_key, mapping={"xp": new_xp})

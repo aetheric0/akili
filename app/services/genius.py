@@ -1,208 +1,182 @@
-# app/services/gemini.py
-
 """
-* Service module for interacting with Google's Gemini Generative AI API.
-    - Now uses Redis to store and restore chat history for persistent
-    sessions.
-    - Encapsulates API calls and error handling logic.
+Service module for interacting with Google's Gemini Generative AI API.
+Includes Redis-based session persistence for context retention.
 """
 
 import json
-import requests
-from typing import Optional, Any
+import re
+from typing import Optional, Any, List
 from config import settings
-
-# GOOGLE GEN_AI IMPORTS
 from google import genai
 from google.genai.errors import APIError
 from google.genai.chats import AsyncChat
 from google.genai import types
-
-# Import Cache Service (REDIS)
 from app.services.db import cache_service
 
-#Initialize the Gemini Client globally
+
+# Initialize the Gemini Client globally
 client = genai.Client(api_key=settings.GOOGLE_GEMINI_API_KEY)
 async_client = client.aio
 
-# GEN_AI model
+# Model used
 MODEL_NAME: str = "gemini-2.5-flash-lite"
 
-# System Instruction/Context for AI model
-system_context= """Generate a concise, easy-to-understand summary and then create
+# System prompt template
+SYSTEM_CONTEXT = """Generate a concise, easy-to-understand summary and then create
 a 5-question multiple-choice quiz. Provide an answer key at the end.
 \n\nTEXT:\n{extracted_text}"""
 
+TTL_72_HOURS = 259200  # 3 days
 
-# --- Helper FUnctions for History Serialization ---
 
-def _serialize_history(history: list[types.Content]) -> list[dict]:
-    """
-    Converts a list of Gemini Content objects into JSON-serializable dictionaries.
-    """
-    serialized_list = []
+# --- Helper Functions for History Serialization ---
+
+def _serialize_history(history: List[types.Content]) -> List[dict]:
+    """Convert a list of Gemini Content objects into JSON-serializable dicts."""
+    serialized = []
     for content in history:
         try:
-            json_string = content.model_dump_json()
-            serialized_list.append(json.loads(json_string))
+            serialized.append(json.loads(content.model_dump_json()))
         except AttributeError:
-            try:
-                # Fallback to Pydantic V1/older SDK
-                json_string = content.json()
-                serialized_list.append(json.loads(json_string))
-            except Exception as e:
-                # 3. If both fail, something is fundamentally wrong with the object structure
-                print(f"Serialization Error: Content object failed both model_dump() and dict(): {e}")
-                raise RuntimeError(f"Failed to deeply serialize Content object using Pydantic methods: {e}")
+            serialized.append(json.loads(content.json()))
         except Exception as e:
-            # Catch all other exceptions during serialization
-            print(f"Serialization Error on content object: {e}")
-            raise RuntimeError(f"Failed to deeply serialize Content object: {e}")
-        
-    return serialized_list
-        
+            print(f"[ERROR] Failed to serialize content: {e}")
+    return serialized
 
-def _deserialize_history(history_dicts: list[dict]) -> list[types.Content]:
-    """
-    Converts a list of dictionaries back into Gemini Content objects.
-    """
-    deserialized_list = []
-    for content_dict in history_dicts:
-        try:
-            deserialized_list.append(content_dict)
-        except Exception as e:
-            raise ValueError(f"Failed to deserialize dict {content_dict} into types.Content. Internal error: {e}") from e
-    return deserialized_list
-    
-# --- Genius Service Implementation
+
+def _deserialize_history(history_dicts: List[dict]) -> List[types.Content]:
+    """Convert a list of dicts back into Gemini Content objects."""
+    if not history_dicts:
+        return []
+    deserialized = []
+    for entry in history_dicts:
+        if isinstance(entry, dict):
+            deserialized.append(entry)
+    return deserialized
+
+
+# --- Core Service ---
 
 class GeniusService:
-    """ 
-    Handles all interactions with the Gemini API, utilizing Redis for persistent
-    chat sessions
+    """
+    Handles all interactions with Gemini API using Redis for persistent chat sessions.
     """
 
-    async def get_or_create_chat_session(self, session_id: str) -> AsyncChat:
+    async def get_or_create_chat_session(self, session_id: str, extracted_text: Optional[str] = None) -> AsyncChat:
         """
-        Retrieves an existing chat history from Redis and re-initializes the AsyncChat
-        object, or creates a new session if no history is found.
+        Retrieves existing chat history from Redis or creates a new AsyncChat session.
         """
-        # Attempt to retrieve history from Redis
-        # cache_service.get returns a Python object (list of dicts) or None
-        history_dicts: Optional[Any] = cache_service.get(session_id)
+        try:
+            history_dicts: Optional[Any] = cache_service.get(session_id)
+            initial_history: List[types.Content] = []
+            chat_config: Optional[types.GenerateContentConfig] = None
 
-        initial_history: list[types.Content] = []
-        chat_config: Optional[types.GenerateContentConfig] = None
+            if history_dicts:
+                try:
+                    initial_history = _deserialize_history(history_dicts)
+                    print(f"[INFO] Restored session {session_id} with {len(initial_history)} messages.")
+                except Exception as e:
+                    print(f"[WARN] Corrupted history for {session_id}, resetting. {e}")
+                    cache_service.delete(session_id)
+                    initial_history = []
 
-        if history_dicts:
-            try:
-                # If found, deserialize the dicts back into types.Content objects
-                initial_history = _deserialize_history(history_dicts)
-                print(
-                    "Restored chat session for ID: {} with "
-                    "{} history parts.".format(session_id, len(initial_history))
-                )
-            except Exception as e:
-                # Handle case where Redis data is corrupted or malformed
-                print(
-                    "⚠️  WARNING: Failed to deserialize chat history for "
-                    "{}. Starting new session. Error: {}".format(session_id, e)
-                )
-                cache_service.delete(session_id)    # Clear bad cache entry
-        if not initial_history:
-            # Only apply the system_context on a brand new session.
-            chat_config = types.GenerateContentConfig(
-                system_instruction=system_context
+            if not initial_history:
+                system_prompt = SYSTEM_CONTEXT.format(extracted_text=extracted_text or "")
+                chat_config = types.GenerateContentConfig(system_instruction=system_prompt)
+                print(f"[INFO] Created new chat session for {session_id}")
+
+            chat: AsyncChat = async_client.chats.create(
+                model=MODEL_NAME,
+                history=initial_history,
+                config=chat_config,
             )
-            print("Created new chat session for ID: {}".format(session_id))
-        # Create chat session (either new or restored)
-        # ⚠️  WARNING: Avoid mixing synchronous and asynchronous access to this
-        # file to prevent race conditions and unpredictable behavior. Choose one
-        # mode and use it consistently throughout the application. The base code
-        # of this project uses asynchronous calls through Gemini's chat sessions'
-        # genai.Client.aio()
-        chat: AsyncChat = async_client.chats.create(
-            model=MODEL_NAME,
-            history=initial_history,
-            config=chat_config
-        )
 
+            return chat
 
-        return chat
+        except Exception as e:
+            print(f"[ERROR] Failed to create or restore chat session: {e}")
+            raise
 
     async def get_chat_response(self, session_id: str, message: str) -> str:
         """
-        Sends a message to the chat session, gets the model's response,
-        and saves the *updated* history back to Redis.
+        Sends user input to Gemini and stores updated history in Redis.
         """
         try:
-            # Get the session (or create/restore it)
-            chat: AsyncChat = await self.get_or_create_chat_session(session_id)
+            chat = await self.get_or_create_chat_session(session_id)
 
-            # Sends the message
+            # Send message
             response = await chat.send_message(message)
 
-            # Get the *updated* history after the model's response
-            # The history now includes the user message and the model's response
-            updated_history: list[types.Content] = chat.get_history()
+            # Update Redis with new history
+            updated_history = chat.get_history()
+            serialized = _serialize_history(updated_history)
+            cache_service.set(session_id, serialized, ttl_seconds=TTL_72_HOURS)
+            print(f"[INFO] Saved session {session_id} with {len(updated_history)} messages.")
 
-            # Serialize and save the history back to Redis
-            serialized_history = _serialize_history(updated_history)
-
-            # TTL: 72 Hours
-            TTL_72_HOURS = 259200
-            cache_service.set(session_id, serialized_history, ttl_seconds=TTL_72_HOURS)
-
-            print(
-                "Saved {} history parts to Redis for {}.".format(
-                    len(updated_history),
-                    session_id
-                )
-            )
-
-            try:
-                # --- Case 1: Direct .text field ---
-                if hasattr(response, "text") and isinstance(response.text, str):
-                        clean_text = response.text
-                
-                # --- Case 2: Structured Gemini candidates ---
-                elif hasattr(response, "candidates"):
-                    parts = []
-                    for candidate in getattr(response, "candidates", []) or []:
-                        content = getattr(candidate, "content", None)
-                        if content and hasattr(content, "parts"):
-                            for part in content.parts:
-                                text_part = getattr(part, "text", None)
-                                if isinstance(text_part, str):
-                                    parts.append(text_part)
-                                elif isinstance(text_part, (dict, list)):
-                                    # Convert structured data to readable JSON for inspection
-                                    parts.append(json.dumps(text_part, indent=2))
-                                elif isinstance(part, dict):
-                                    # handle dict directly if SDK version changed
-                                    parts.append(json.dumps(part, indent=2))
-                                else:
-                                    # skip None/empty parts
-                                    continue
-                    clean_text = "\n\n".join(parts).strip()
-                
-                else:
-                    # Fallback
-                    clean_text = str(response)
-                
-                # Extra: remove leftover placeholders like [object Object]
-                clean_text = clean_text.replace("[object Object]", "").strip()
-                
-            except Exception as e:
-                print(f"[WARN] Failed to normalize Gemini response: {e}")
-                clean_text = str(response)
-
+            # Extract text
+            clean_text = self._extract_response_text(response)
             return clean_text
 
+        except APIError as e:
+            print(f"[API ERROR] Gemini request failed: {e}")
+            return "⚠️ Gemini API request failed."
         except Exception as e:
-                    # Global error handler for the whole function
-                    print(f"[ERROR] Gemini API call failed: {e}")
-                    return f"Error: {e}"
+            print(f"[ERROR] Gemini chat error: {e}")
+            return f"Error: {e}"
 
+    def _extract_response_text(self, response: Any) -> str:
+        """
+        Safely extract human-readable text from Gemini responses.
+        """
+        try:
+            if hasattr(response, "text") and isinstance(response.text, str):
+                return response.text.strip()
+
+            elif hasattr(response, "candidates"):
+                parts = []
+                for candidate in response.candidates:
+                    content = getattr(candidate, "content", None)
+                    if content and hasattr(content, "parts"):
+                        for part in content.parts:
+                            if isinstance(part, dict):
+                                text = part.get("text")
+                                if text:
+                                    parts.append(text)
+                            elif hasattr(part, "text"):
+                                parts.append(part.text)
+                return "\n\n".join(parts).strip()
+
+            return str(response)
+
+        except Exception as e:
+            print(f"[WARN] Failed to parse response: {e}")
+            return str(response)
+
+    async def generate_session_title(user_message: str, ai_response: str | None = None) -> str:
+        """
+        Generates a short, human-readable session title based on the first user message (and optionally AI response).
+        """
+        try:
+            # Use the first sentence or keyword-like chunk
+            text = user_message.strip()
+            text = re.sub(r'[^\w\s]', '', text)  # remove punctuation
+    
+            if len(text.split()) <= 3:
+                title = text.title()
+            else:
+                title = " ".join(text.split()[:5]).title()  # take first 5 words max
+    
+            if not title:
+                title = "New Chat"
+    
+            # Optional enhancement: add emoji or prefix for personality
+            # title = f"💬 {title}"
+    
+            return title[:60]  # safety truncate
+    
+        except Exception:
+            return "Untitled Chat"
+
+
+# Export singleton
 genius_service = GeniusService()
-

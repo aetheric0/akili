@@ -45,7 +45,7 @@ async def initialize_mpesa_payment(
     """
     Initializes a Paystack M-Pesa charge (STK Push) for a user.
     """
-    guest_token = user["token"]
+    user_id = user["user_id"]
     amount = AMOUNTS_KES.get(request.plan_name)
     if not amount:
         raise HTTPException(status_code=400, detail="Invalid plan name.")
@@ -60,11 +60,11 @@ async def initialize_mpesa_payment(
     url = f"{PAYSTACK_API_BASE}/charge"
     headers = {"Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}"}
     payload = {
-        "email": f"{guest_token}@akili.app",
+        "email": f"{user_id}@akili.app",
         "amount": str(amount),
         "currency": "KES",
         "metadata": {
-            "guest_token": guest_token,
+            "user_id": user_id,
             "plan_name": request.plan_name,
         },
         "mobile_money": {
@@ -116,10 +116,10 @@ async def handle_paystack_webhook(request: Request):
     if event.get('event') == 'charge.success':
         data = event['data']
         metadata = data.get('metadata', {})
-        guest_token = metadata.get('guest_token')
+        user_id = metadata.get('user_id')
         plan_name = metadata.get('plan_name')
 
-        if not guest_token or not plan_name:
+        if not user_id or not plan_name:
             # Can't process without metadata, but return 200 so Paystack doesn't retry
             print("Webhook received with missing metadata.")
             return {"status": "ignored"}
@@ -128,7 +128,7 @@ async def handle_paystack_webhook(request: Request):
         
         # 3. Call your subscription service to activate the plan
         subscription_service.activate_subscription(
-            guest_token=guest_token,
+            user_id=user_id,
             plan_name=plan_name
         )
         

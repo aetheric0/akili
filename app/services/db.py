@@ -217,7 +217,7 @@ class CacheService:
     # ---------- Subscription helpers ----------
     def set_user_subscription(self, user_id: str, tier: str = "paid", expiry_date: Optional[datetime] = None) -> bool:
         """
-        Save subscription data under token:{guest_token}.
+        Save subscription data under user:{user_id}.
         expiry_date: datetime or None (if None and tier=='paid', you can choose to set a long expiry)
         """
         key = f"user:{user_id}"
