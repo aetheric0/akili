@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Depends
 from supabase import create_client, Client
 from app.services.db import cache_service
 from config import settings, SUBSCRIPTION_PLANS
@@ -13,6 +13,90 @@ def extract_token(authorization: str) -> str:
     if not token:
         raise HTTPException(status_code=401, detail="Missing token")
     return token
+
+async def check_usage_limits(
+    user_id: str,
+    action: str,
+    tier: str = "free"
+):
+    """
+    Enforces daily/monthly usage limits for key actions.
+    Resets counters automatically when the date changes.
+    """
+
+    # Map actions to Redis fields
+    field_map = {
+        "upload_doc": "daily_doc_uploads",
+        "upload_image": "daily_image_uploads",
+        "exam_analysis": "monthly_exam_analyses",
+    }
+
+    if action not in field_map:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    field = field_map[action]
+    limits = SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
+
+    if not limits:
+        # lifetime or undefined tier -> no limits
+        return
+
+    # Fetch user stats from Redis
+    key = f"user_stats:{user_id}"
+    user_stats = await cache_service.hgetall(key) or {}
+
+    today = datetime.utcnow().date()
+    last_reset = user_stats.get("last_reset_date")
+
+    # Reset logic — happens automatically per new day/month
+    if not last_reset or last_reset != today.isoformat():
+        # Monthly reset if month changes
+        monthly_analyses = user_stats.get("monthly_exam_analyses", 0)
+        if not last_reset or last_reset[:7] != today.isoformat()[:7]:
+            monthly_analyses = 0
+
+        await cache_service.hset(key, {
+            "daily_doc_uploads": 0,
+            "daily_image_uploads": 0,
+            "monthly_exam_analyses": monthly_analyses,
+            "last_reset_date": today.isoformat(),
+        })
+        user_stats = await cache_service.hgetall(key)
+
+    # Increment usage
+    current_value = int(user_stats.get(field, 0)) + 1
+    limit_value = limits[field]
+
+    if current_value > limit_value:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"You’ve reached your {field.replace('_', ' ')} limit for today. Please upgrade to continue.",
+        )
+
+    # Save the updated count
+    await cache_service.hset(key, {field: current_value})
+
+def enforce_usage_limit(action: str):
+    async def _enforcer(user: dict = Depends(get_current_user)):
+        await check_usage_limits(user["user_id"], action)
+    return _enforcer
+
+async def enforce_active_session_limit(user_id: str, tier: str):
+    """
+    Checks how many active sessions the user currently has (chat + study)
+    and enforces the per-tier max_sessions rule.
+    """
+
+    limits = SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
+    max_sessions = limits.get("max_sessions", 5)
+
+    active_sessions = len(cache_service.list_user_sessions(user_id))
+    if active_sessions >= max_sessions:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Session limit reached ({max_sessions}). Delete an old session or upgrade your plan."
+        )
+
 
 async def get_current_user(authorization: str = Header(...)) -> dict:
     token = extract_token(authorization)

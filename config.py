@@ -6,10 +6,25 @@ from pydantic_settings import BaseSettings
 from datetime import timedelta
 
 SUBSCRIPTION_PLANS = {
-    "basic_weekly": timedelta(days=7),
-    "standard_monthly": timedelta(days=30),
-    "premium-quarterly": timedelta(days=30),
-    "lifetime": None    # No enquiry
+"free": {
+        "daily_doc_uploads": 5,
+        "daily_image_uploads": 2,
+        "monthly_exam_analyses": 0,
+        "max_sessions": 5,
+    },
+    "basic": {
+        "daily_doc_uploads": 15,
+        "daily_image_uploads": 15,
+        "monthly_exam_analyses": 10,
+        "max_sessions": 15,
+    },
+    "premium": {
+        "daily_doc_uploads": 50,
+        "daily_image_uploads": 100,
+        "monthly_exam_analyses": 999,
+        "max_sessions": 999,
+    },
+    "lifetime": None
 }
 
 class Settings(BaseSettings):

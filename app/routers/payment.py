@@ -33,7 +33,7 @@ def normalize_kenyan_phone_number(phone: str) -> str:
 
 PAYSTACK_API_BASE = "https://api.paystack.co"
 AMOUNTS_KES = {
-    "basic_weekly": 50 * 100,
+    "basic": 50 * 100,
     "standard_monthly": 199 * 100,
 }
 
