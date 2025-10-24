@@ -43,7 +43,7 @@ async def check_usage_limits(
 
     # Fetch user stats from Redis
     key = f"user_stats:{user_id}"
-    user_stats = await cache_service.hgetall(key) or {}
+    user_stats = cache_service.hgetall(key) or {}
 
     today = datetime.utcnow().date()
     last_reset = user_stats.get("last_reset_date")
@@ -74,7 +74,7 @@ async def check_usage_limits(
         )
 
     # Save the updated count
-    await cache_service.hset(key, {field: current_value})
+    cache_service.hset(key, {field: current_value})
 
 def enforce_usage_limit(action: str):
     async def _enforcer(user: dict = Depends(get_current_user)):
@@ -105,7 +105,7 @@ async def get_current_user(authorization: str = Header(...)) -> dict:
     email: str | None = None
 
     if token.startswith("guest_"):
-        user_id = token
+        user_id = token.replace("guest_", "guest:")
         is_guest = True
     else:
         try:

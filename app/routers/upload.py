@@ -105,6 +105,7 @@ async def upload_document_and_start_chat(
         cache_service.expire(session_key, int(timedelta(days=7).total_seconds()))
 
     cache_service.sadd(f"user:{user_id}:sessions", session_id)
+    active_sessions = len(cache_service.list_user_sessions(user_id))
 
     # ✅ 7. Return API response
     return {
@@ -116,6 +117,7 @@ async def upload_document_and_start_chat(
         "tier": user_tier,
         "plan_name": plan_name,
         "expiry_date": expiry_date,
+        "active_sessions": active_sessions,
     }
 
 
@@ -129,7 +131,6 @@ async def upload_document_and_start_chat(
 )
 async def send_user_message(
     request: ChatRequest,
-    _: None = Depends(enforce_usage_limit("chat_message")),  # ✅ fixed comma + dependency
     user: dict = Depends(get_current_user),
 ):
     """
