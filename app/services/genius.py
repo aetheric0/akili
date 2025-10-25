@@ -67,7 +67,7 @@ class GeniusService:
         Retrieves existing chat history from Redis or creates a new AsyncChat session.
         """
         try:
-            history_dicts: Optional[Any] = cache_service.get(session_id)
+            history_dicts: Optional[Any] = await cache_service.get(session_id)
             initial_history: List[types.Content] = []
             chat_config: Optional[types.GenerateContentConfig] = None
 
@@ -77,7 +77,7 @@ class GeniusService:
                     print(f"[INFO] Restored session {session_id} with {len(initial_history)} messages.")
                 except Exception as e:
                     print(f"[WARN] Corrupted history for {session_id}, resetting. {e}")
-                    cache_service.delete(session_id)
+                    await cache_service.delete(session_id)
                     initial_history = []
 
             if not initial_history:
@@ -110,7 +110,7 @@ class GeniusService:
             # Update Redis with new history
             updated_history = chat.get_history()
             serialized = _serialize_history(updated_history)
-            cache_service.set(session_id, serialized, ttl_seconds=TTL_72_HOURS)
+            await cache_service.set(session_id, serialized, ttl_seconds=TTL_72_HOURS)
             print(f"[INFO] Saved session {session_id} with {len(updated_history)} messages.")
 
             # Extract text

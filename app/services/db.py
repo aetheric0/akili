@@ -1,34 +1,21 @@
 # app/services/db.py
-#!/usr/bin/env python3
-"""
-Redis CacheService for Akili Study.
 
-Provides:
-- JSON-safe get/set
-- TTL utilities (expire/persist)
-- Policy-aware set_with_policy (free => 7d TTL, paid => persistent)
-- Hash/Set helpers
-- Session helpers (add/remove/count/list)
-- Subscription helpers (set/get, is_active)
-"""
-
-import redis
+import redis.asyncio as redis # <-- Import the asyncio version of redis
 import json
 from typing import Any, Optional, List, Dict
 from datetime import datetime, timedelta
 from config import settings
 
+# --- Initialize the Async Client ---
 REDIS_CLIENT = redis.Redis.from_url(
     settings.REDIS_HOST,
     decode_responses=True
 )
 
-# Quick connection check
-try:
-    REDIS_CLIENT.ping()
-    print(f"✅ Connected to Redis at {settings.REDIS_HOST}")
-except redis.exceptions.ConnectionError as e:
-    print(f"❌ Could not connect to Redis at {settings.REDIS_HOST}: {e}")
+# Note: The global .ping() is removed as it would need to be awaited
+# in an async context, which doesn't exist here.
+# The service will check the connection on its first call.
+print(f"✅ Redis Async Client configured for {settings.REDIS_HOST}")
 
 
 class CacheService:
@@ -36,241 +23,204 @@ class CacheService:
         self.client = client
 
     # ---------- Core JSON get/set ----------
-    def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Optional[Any]:
         """Return parsed JSON object or None."""
         try:
-            raw = self.client.get(key)
+            raw = await self.client.get(key) # <-- await
             if raw is None:
                 return None
-            # raw is a string because decode_responses=True
             return json.loads(raw)
         except (redis.exceptions.RedisError, json.JSONDecodeError) as e:
             print(f"[Redis:get] Error for key {key}: {e}")
             return None
 
-    def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> bool:
-        """
-        Set key to JSON-serialized value.
-        ttl_seconds: optional TTL in seconds. If None -> no TTL.
-        """
+    async def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> bool:
+        """Set key to JSON-serialized value."""
         try:
             payload = json.dumps(value)
             if ttl_seconds is not None:
-                self.client.set(key, payload, ex=int(ttl_seconds))
+                await self.client.set(key, payload, ex=int(ttl_seconds)) # <-- await
             else:
-                self.client.set(key, payload)
+                await self.client.set(key, payload) # <-- await
             return True
         except redis.exceptions.RedisError as e:
             print(f"[Redis:set] Error setting key {key}: {e}")
             return False
 
     # ---------- TTL utilities ----------
-    def expire(self, key: str, ttl_seconds: int) -> bool:
-        """Apply expiration (TTL) to an existing key."""
+    async def expire(self, key: str, ttl_seconds: int) -> bool:
         try:
-            return self.client.expire(key, int(ttl_seconds))
+            return await self.client.expire(key, int(ttl_seconds)) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:expire] Error applying TTL to {key}: {e}")
             return False
 
-    def persist(self, key: str) -> bool:
-        """Remove TTL from a key (make it persistent)."""
+    async def persist(self, key: str) -> bool:
         try:
-            return self.client.persist(key)
+            return await self.client.persist(key) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:persist] Error removing TTL on {key}: {e}")
             return False
 
-    def ttl(self, key: str) -> int:
-        """Return TTL in seconds (-1 if persistent, -2 if not exists)."""
+    async def ttl(self, key: str) -> int:
         try:
-            return self.client.ttl(key)
+            return await self.client.ttl(key) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:ttl] Error reading TTL for {key}: {e}")
             return -2
 
     # ---------- Policy-aware setter ----------
-    def set_with_policy(self, key: str, value: Any, tier: str) -> bool:
-        """
-        Set a key according to tier policy:
-          - tier == "free" -> 7 days TTL
-          - tier == "paid" -> persistent (no TTL)
-          - any other -> treat as free
-        NOTE: expired paid users are handled by application logic; if you
-        want to preserve their history, treat them as "paid" here.
-        """
+    async def set_with_policy(self, key: str, value: Any, tier: str) -> bool:
         try:
             if tier == "paid":
-                # Save permanently
-                return self.set(key, value, ttl_seconds=None)
+                return await self.set(key, value, ttl_seconds=None) # <-- await
             else:
-                # Free (or default) -> 7 days
                 seven_days = 7 * 24 * 3600
-                return self.set(key, value, ttl_seconds=seven_days)
+                return await self.set(key, value, ttl_seconds=seven_days) # <-- await
         except Exception as e:
             print(f"[Redis:policy] Error setting {key} with tier {tier}: {e}")
             return False
 
     # ---------- Hash helpers ----------
-    def hset(self, key: str, mapping: Dict[str, Any]) -> bool:
-        """Set multiple fields in a hash. Serializes values to strings."""
+    async def hset(self, key: str, mapping: Dict[str, Any]) -> bool:
         try:
-            # Redis hset expects mapping of field->value as strings
-            flat = {k: (v if isinstance(v, str) else json.dumps(v)) for k, v in mapping.items()}
-            self.client.hset(key, mapping=flat)
+            flat = {k: (v if isinstance(v, (str, int, float, bool)) else json.dumps(v)) for k, v in mapping.items()}
+            await self.client.hset(key, mapping=flat) # <-- await
             return True
         except redis.exceptions.RedisError as e:
             print(f"[Redis:hset] Error on {key}: {e}")
             return False
 
-    def hgetall(self, key: str) -> Dict[str, str]:
-        """Return all fields from a hash (strings)."""
+    async def hgetall(self, key: str) -> Dict[str, str]:
         try:
-            return self.client.hgetall(key) or {}
+            return await self.client.hgetall(key) or {} # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:hgetall] Error on {key}: {e}")
             return {}
 
-    def hget(self, key: str, field: str) -> Optional[str]:
+    async def hget(self, key: str, field: str) -> Optional[str]:
         try:
-            return self.client.hget(key, field)
+            return await self.client.hget(key, field) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:hget] Error on {key}:{field}: {e}")
             return None
 
     # ---------- Set helpers ----------
-    def sadd(self, key: str, value: str) -> int:
+    async def sadd(self, key: str, *values: str) -> int:
         try:
-            return int(self.client.sadd(key, value))
+            return int(await self.client.sadd(key, *values)) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:sadd] Error on {key}: {e}")
             return 0
 
-    def srem(self, key: str, value: str) -> int:
+    async def srem(self, key: str, value: str) -> int:
         try:
-            return int(self.client.srem(key, value))
+            return int(await self.client.srem(key, value)) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:srem] Error on {key}: {e}")
             return 0
 
-    def smembers(self, key: str) -> set:
+    async def smembers(self, key: str) -> set:
         try:
-            return set(self.client.smembers(key) or set())
+            return set(await self.client.smembers(key) or set()) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:smembers] Error on {key}: {e}")
             return set()
 
-    def scard(self, key: str) -> int:
+    async def scard(self, key: str) -> int:
         try:
-            return int(self.client.scard(key))
+            return int(await self.client.scard(key)) # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:scard] Error on {key}: {e}")
             return 0
 
     # ---------- Generic ----------
-    def delete(self, key: str) -> int:
+    async def delete(self, *keys: str) -> int:
         try:
-            return int(self.client.delete(key))
+            return int(await self.client.delete(*keys)) if keys else 0 # <-- await
         except redis.exceptions.RedisError as e:
-            print(f"[Redis:delete] Error deleting {key}: {e}")
+            print(f"[Redis:delete] Error deleting keys: {e}")
             return 0
 
-    def exists(self, key: str) -> bool:
+    async def exists(self, key: str) -> bool:
         try:
-            return self.client.exists(key) == 1
+            return await self.client.exists(key) == 1 # <-- await
         except redis.exceptions.RedisError as e:
             print(f"[Redis:exists] Error checking {key}: {e}")
             return False
 
+    async def sismember(self, key: str, value: str) -> bool:
+            """Check if a value is a member of a set."""
+            try:
+                return await self.client.sismember(key, value)
+            except redis.exceptions.RedisError as e:
+                print(f"[Redis:sismember] Error on {key}: {e}")
+                return False
+
     # ---------- Session & User helpers ----------
-    def add_session_for_user(self, user_id: str, session_id: str, session_data: Optional[Dict[str, Any]] = None, tier: str = "free") -> bool:
-        """
-        Add session id to user's session set and (optionally) store session_data.
-        session_data will be stored at key 'session:{session_id}' and policy applied.
-        """
+    async def add_session_for_user(self, user_id: str, session_id: str, session_data: Dict[str, Any], tier: str) -> bool:
         session_key = f"session:{session_id}"
         user_sessions_key = f"user:{user_id}:sessions"
 
-        if session_data is not None:
-            ok = self.set_with_policy(session_key, session_data, tier=tier)
-            if not ok:
-                print(f"[CacheService] Warning: failed to write session data for {session_id}")
-        self.sadd(user_sessions_key, session_id)
-        return True
+        # Use a pipeline for atomicity
+        pipe = self.client.pipeline()
+        
+        # Manually serialize data for the pipeline
+        payload = json.dumps(session_data)
+        if tier == "paid":
+            pipe.set(session_key, payload, ex=None)
+        else:
+            pipe.set(session_key, payload, ex=int(timedelta(days=7).total_seconds()))
+        
+        pipe.sadd(user_sessions_key, session_id)
+        
+        try:
+            await pipe.execute() # <-- await pipeline
+            return True
+        except redis.exceptions.RedisError as e:
+            print(f"[CacheService] Error in add_session_for_user pipeline: {e}")
+            return False
 
-    def remove_session_for_user(self, user_id: str, session_id: str) -> bool:
-        """Remove session id from user's set and delete session key."""
+    async def remove_session_for_user(self, user_id: str, session_id: str) -> bool:
         session_key = f"session:{session_id}"
         user_sessions_key = f"user:{user_id}:sessions"
-        self.srem(user_sessions_key, session_id)
-        self.delete(session_key)
-        return True
+        
+        pipe = self.client.pipeline()
+        pipe.srem(user_sessions_key, session_id)
+        pipe.delete(session_key)
+        
+        try:
+            await pipe.execute() # <-- await pipeline
+            return True
+        except redis.exceptions.RedisError as e:
+            return False
 
-    def count_user_sessions(self, user_id: str) -> int:
-        """Return number of active sessions tracked for a user."""
-        return self.scard(f"user:{user_id}:sessions")
-
-    def list_user_sessions(self, user_id: str) -> List[str]:
-        """Return list of session IDs for a user."""
-        return list(self.smembers(f"user:{user_id}:sessions"))
+    async def list_user_sessions(self, user_id: str) -> List[str]:
+        return list(await self.smembers(f"user:{user_id}:sessions")) # <-- await
 
     # ---------- Subscription helpers ----------
-    def set_user_subscription(self, user_id: str, tier: str = "paid", expiry_date: Optional[datetime] = None) -> bool:
-        """
-        Save subscription data under user:{user_id}.
-        expiry_date: datetime or None (if None and tier=='paid', you can choose to set a long expiry)
-        """
-        key = f"user:{user_id}"
-        payload: Dict[str, str] = {"tier": tier}
-        if expiry_date:
-            payload["expiry_date"] = expiry_date.isoformat()
-        payload["paid"] = "true" if tier == "paid" else "false"
-        return self.hset(key, payload)
+    async def set_user_profile(self, user_id: str, profile_data: Dict[str, Any]) -> bool:
+        return await self.hset(f"user_stats:{user_id}", profile_data) # <-- await
 
-    def get_user_subscription(self, user_id: str) -> Dict[str, str]:
-        return self.hgetall(f"user:{user_id}")
-
-    def is_subscription_active(self, user_id: str) -> bool:
-        """
-        Returns True if the user has tier == 'paid' and expiry_date is in the future (or not provided).
-        The application layer can implement grace periods; we keep this simple here.
-        """
-        data = self.get_user_subscription(user_id)
-        if not data:
-            return False
-        tier = data.get("tier")
-        if tier != "paid":
-            return False
-        expiry = data.get("expiry_date")
-        if not expiry:
-            # treat as active if expiry not set (e.g., long-lived paid account)
-            return True
-        try:
-            expiry_dt = datetime.fromisoformat(expiry)
-        except Exception:
-            return False
-        return datetime.utcnow() <= expiry_dt
-
-    def set_user_profile(self, user_id: str, profile_data: Dict[str, Any]) -> bool:
-        return self.hset(f"user_stats:{user_id}", profile_data)
-
-    def get_user_profile(self, user_id: str) -> Dict[str, str]:
-        return self.hgetall(f"user_stats:{user_id}")
-
+    async def get_user_profile(self, user_id: str) -> Dict[str, str]:
+        return await self.hgetall(f"user_stats:{user_id}") # <-- await
 
     # ---------- Bulk helpers ----------
-    def persist_user_sessions(self, user_id: str) -> None:
-        """Remove TTL for all sessions of a user (make them permanent)."""
-        sessions = self.smembers(f"user:{user_id}:sessions")
+    async def persist_user_sessions(self, user_id: str) -> None:
+        sessions = await self.smembers(f"user:{user_id}:sessions") # <-- await
+        pipe = self.client.pipeline()
         for s in sessions:
-            self.persist(f"session:{s}")
+            pipe.persist(f"session:{s}")
+        await pipe.execute() # <-- await
 
-    def expire_user_sessions(self, user_id: str, ttl_seconds: int) -> None:
-        """Apply TTL to all sessions of a user (useful to enforce expiry policy)."""
-        sessions = self.smembers(f"user:{user_id}:sessions")
+    async def expire_user_sessions(self, user_id: str, ttl_seconds: int) -> None:
+        sessions = await self.smembers(f"user:{user_id}:sessions") # <-- await
+        pipe = self.client.pipeline()
         for s in sessions:
-            self.expire(f"session:{s}", ttl_seconds)
+            pipe.expire(f"session:{s}", ttl_seconds)
+        await pipe.execute() # <-- await
 
 
 # Instantiate the cache service for app usage
 cache_service = CacheService(REDIS_CLIENT)
+

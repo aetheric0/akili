@@ -2,7 +2,7 @@ from datetime import datetime
 from config import SUBSCRIPTION_PLANS
 from app.services.db import cache_service
 
-def activate_subscription(user_id: str, plan_name: str):
+async def activate_subscription(user_id: str, plan_name: str):
     """
     Activates or renews a user's subscription based on their selected plan.
     """
@@ -15,7 +15,7 @@ def activate_subscription(user_id: str, plan_name: str):
     else:
         expiry_date = (datetime.utcnow() + duration).isoformat()
 
-    cache_service.hset(
+    await cache_service.hset(
         user_key, mapping={
             "is_paid": "true",
             "plan_name": plan_name,

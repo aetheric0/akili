@@ -39,13 +39,13 @@ async def get_user_sessions(user: dict = Depends(get_current_user)):
         )
 
     try:
-        session_ids = cache_service.list_user_sessions(user_id)
+        session_ids = await cache_service.list_user_sessions(user_id)
         if not session_ids:
             return []
 
         sessions_list = []
         for session_id in session_ids:
-            session_data = cache_service.get(f"session:{session_id}")
+            session_data = await cache_service.get(f"session:{session_id}")
             if not session_data:
                 continue
 
@@ -86,14 +86,14 @@ async def get_session_details(session_id: str, user: dict = Depends(get_current_
     user_id = user["user_id"]
 
     # ✅ Security check
-    if session_id not in cache_service.list_user_sessions(user_id):
+    if session_id not in await cache_service.list_user_sessions(user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access this session."
         )
 
     try:
-        session_data = cache_service.get(f"session:{session_id}")
+        session_data = await cache_service.get(f"session:{session_id}")
         if not session_data:
             raise HTTPException(status_code=404, detail="Session not found.")
 
@@ -103,7 +103,7 @@ async def get_session_details(session_id: str, user: dict = Depends(get_current_
             except json.JSONDecodeError:
                 raise HTTPException(status_code=500, detail="Corrupted session data.")
 
-        history_raw = session_data.get("history", "[]")
+        history_raw = await session_data.get("history", "[]")
         history_list = (
             json.loads(history_raw)
             if isinstance(history_raw, str)
@@ -148,7 +148,7 @@ async def create_new_chat_session(user: dict = Depends(get_current_user)):
     }
 
     try:
-        cache_service.add_session_for_user(user_id, session_id, session_data, tier=user["tier"])
+        await cache_service.add_session_for_user(user_id, session_id, session_data, tier=user["tier"])
 
         return SessionInfo(
             id=session_id,
@@ -174,14 +174,14 @@ async def delete_user_session(session_id: str, user: dict = Depends(get_current_
     user_sessions_key = f"user:{user_id}:sessions"
 
     # ✅ Security Check: Verify ownership before attempting deletion
-    if not cache_service.client.sismember(user_sessions_key, session_id):
+    if not await cache_service.client.sismember(user_sessions_key, session_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to delete this session."
         )
 
     try:
-        success = cache_service.remove_session_for_user(
+        success = await cache_service.remove_session_for_user(
             user_id=user_id,
             session_id=session_id
         )

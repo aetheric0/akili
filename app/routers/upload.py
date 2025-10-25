@@ -95,17 +95,17 @@ async def upload_document_and_start_chat(
         "expiry_date": expiry_date,
     }
 
-    cache_service.add_session_for_user(user_id, session_id, session_data, tier=user_tier)
+    await cache_service.add_session_for_user(user_id, session_id, session_data, tier=user_tier)
 
     # ✅ 6. Persistence policy based on user plan
     session_key = f"session:{session_id}"
     if is_paid:
-        cache_service.persist(session_key)
+        await cache_service.persist(session_key)
     else:
-        cache_service.expire(session_key, int(timedelta(days=7).total_seconds()))
+        await cache_service.expire(session_key, int(timedelta(days=7).total_seconds()))
 
-    cache_service.sadd(f"user:{user_id}:sessions", session_id)
-    active_sessions = len(cache_service.list_user_sessions(user_id))
+    await cache_service.sadd(f"user:{user_id}:sessions", session_id)
+    active_sessions = len(await cache_service.list_user_sessions(user_id))
 
     # ✅ 7. Return API response
     return {
@@ -144,7 +144,7 @@ async def send_user_message(
             request.session_id = str(uuid.uuid4())
 
         session_key = f"session:{request.session_id}"
-        session_data = cache_service.get(session_key) or {}
+        session_data = await cache_service.get(session_key) or {}
 
         if isinstance(session_data, str):
             try:
@@ -168,7 +168,7 @@ async def send_user_message(
                 ai_response=follow_up_response,
             )
             session_data["document_name"] = title
-            cache_service.hset(session_key, {"document_name": title})
+            await cache_service.hset(session_key, {"document_name": title})
 
         return ChatResponse(
             session_id=request.session_id,

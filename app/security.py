@@ -43,7 +43,7 @@ async def check_usage_limits(
 
     # Fetch user stats from Redis
     key = f"user_stats:{user_id}"
-    user_stats = cache_service.hgetall(key) or {}
+    user_stats = await cache_service.hgetall(key) or {}
 
     today = datetime.utcnow().date()
     last_reset = user_stats.get("last_reset_date")
@@ -74,7 +74,7 @@ async def check_usage_limits(
         )
 
     # Save the updated count
-    cache_service.hset(key, {field: current_value})
+    await cache_service.hset(key, {field: current_value})
 
 def enforce_usage_limit(action: str):
     async def _enforcer(user: dict = Depends(get_current_user)):
@@ -90,7 +90,7 @@ async def enforce_active_session_limit(user_id: str, tier: str):
     limits = SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
     max_sessions = limits.get("max_sessions", 5)
 
-    active_sessions = len(cache_service.list_user_sessions(user_id))
+    active_sessions = len(await cache_service.list_user_sessions(user_id))
     if active_sessions >= max_sessions:
         raise HTTPException(
             status_code=402,
@@ -118,7 +118,7 @@ async def get_current_user(authorization: str = Header(...)) -> dict:
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid Supabase token: {e}")
 
-    user_data = cache_service.get_user_profile(user_id)
+    user_data = await cache_service.get_user_profile(user_id)
 
     if not user_data:
         print(f"New user detected: {user_id}. Creating default profile in Redis.")
@@ -126,7 +126,7 @@ async def get_current_user(authorization: str = Header(...)) -> dict:
             "tier": "free", "plan_name": "free", "xp": "0", "coins": "0", "streak_days": "0"
         }
         # This is the ONLY time this function should write to the database.
-        cache_service.set_user_profile(user_id, user_data)
+        await cache_service.set_user_profile(user_id, user_data)
 
     tier = user_data.get("tier", "free")
     plan_name = user_data.get("plan_name", "free")

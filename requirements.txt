@@ -33,7 +33,7 @@ python-multipart
 google-genai
 
 # DATABASE(S)
-redis
+redis[asyncio]
 
 # ... other packages ...
 PyYAML>=6.0
