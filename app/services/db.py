@@ -220,6 +220,52 @@ class CacheService:
             pipe.expire(f"session:{s}", ttl_seconds)
         await pipe.execute() # <-- await
 
+    async def merge_guest_data(self, guest_id: str, user_id: str) -> bool:
+            """
+            Atomically merges all data from a guest account to a permanent user account.
+            """
+            guest_stats_key = self._user_stats_key(guest_id)
+            user_stats_key = self._user_stats_key(user_id)
+            guest_sessions_key = self._user_sessions_key(guest_id)
+            user_sessions_key = self._user_sessions_key(user_id)
+    
+            try:
+                pipe = self.client.pipeline()
+    
+                # 1. Merge gamification stats (XP, Coins, etc.)
+                guest_stats = await self.hgetall(guest_stats_key)
+                if guest_stats:
+                    user_stats = await self.hgetall(user_stats_key)
+                    
+                    new_xp = int(user_stats.get("xp", 0)) + int(guest_stats.get("xp", 0))
+                    new_coins = int(user_stats.get("coins", 0)) + int(guest_stats.get("coins", 0))
+                    
+                    update_mapping = {"xp": new_xp, "coins": new_coins}
+    
+                    # Only carry over subscription if the permanent user doesn't have one
+                    if not user_stats.get("tier") or user_stats.get("tier") == "free":
+                        update_mapping["tier"] = guest_stats.get("tier", "free")
+                        if guest_stats.get("expiry_date"):
+                            update_mapping["expiry_date"] = guest_stats.get("expiry_date")
+                    
+                    pipe.hset(user_stats_key, mapping=update_mapping)
+                    pipe.delete(guest_stats_key)
+    
+                # 2. Merge the set of session IDs
+                guest_session_ids = await self.smembers(guest_sessions_key)
+                if guest_session_ids:
+                    pipe.sadd(user_sessions_key, *guest_session_ids)
+                    # 3. Update the 'owner' field in each individual session hash
+                    for session_id in guest_session_ids:
+                        pipe.hset(f"session:{session_id}", "owner", user_id)
+                    pipe.delete(guest_sessions_key)
+    
+                await pipe.execute()
+                return True
+            except Exception as e:
+                print(f"[ERROR] Redis merge failed: {e}")
+                return False
+
 
 # Instantiate the cache service for app usage
 cache_service = CacheService(REDIS_CLIENT)
