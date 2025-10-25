@@ -103,7 +103,7 @@ async def get_session_details(session_id: str, user: dict = Depends(get_current_
             except json.JSONDecodeError:
                 raise HTTPException(status_code=500, detail="Corrupted session data.")
 
-        history_raw = await session_data.get("history", "[]")
+        history_raw = session_data.get("history", "[]")
         history_list = (
             json.loads(history_raw)
             if isinstance(history_raw, str)
