@@ -22,6 +22,16 @@ class CacheService:
     def __init__(self, client: redis.Redis):
         self.client = client
 
+    # --- Key Schema Helpers (These are synchronous and correct) ---
+    def _user_stats_key(self, user_id: str) -> str:
+        return f"user_stats:{user_id}"
+
+    def _user_sessions_key(self, user_id: str) -> str:
+        return f"user:{user_id}:sessions"
+
+    def _session_key(self, session_id: str) -> str:
+        return f"session:{session_id}"
+
     # ---------- Core JSON get/set ----------
     async def get(self, key: str) -> Optional[Any]:
         """Return parsed JSON object or None."""
